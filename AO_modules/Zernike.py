@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Feb 19 10:31:33 2020
-
-@author: cheritie
-"""
 import numpy as np
 import inspect
 import aotools as ao
@@ -12,14 +6,13 @@ import aotools as ao
 # =============================================================================
 
 class Zernike:
-    def __init__(self, telObject, J=1):
-        self.resolution = telObject.resolution
-        self.D = telObject.D
-        self.centralObstruction = telObject.centralObstruction    
-        self.nModes = J
-    
-    def zernike_tel(self, tel, j):
+    def __init__(self, telObject = None):
+        self.tel = telObject
+        
+    @staticmethod
+    def _compute_zernike_tel(tel, j):
         """
+        (WRONG!)
          Creates the Zernike polynomial with radial index, n, and azimuthal index, m.
     
          Args:
@@ -34,9 +27,11 @@ class Zernike:
         X = ( X-(tel.resolution + tel.resolution%2-1)/2 ) / tel.resolution * tel.D
         Y = ( Y-(tel.resolution + tel.resolution%2-1)/2 ) / tel.resolution * tel.D
         #                                          ^- to properly allign coordinates relative to the (0,0) for even/odd telescope resolutions
+        
         R = np.sqrt(X**2 + Y**2)
         R = R/R.max()
         theta = np.arctan2(Y, X)
+        
         out = np.zeros([tel.pixelArea,j])
         outFullRes = np.zeros([tel.resolution**2, j])
 
@@ -61,11 +56,11 @@ class Zernike:
         outFullRes = np.reshape( outFullRes, [tel.resolution, tel.resolution, j] )
         return out, outFullRes
     
-    def computeZernike(self, telObject2):
-        self.modes, self.modesFullRes = self.zernike_tel(telObject2, self.nModes)      
-        # normalize modes  
-
-    def modeName(self, index):
+    def compute_zernike_tel(self, n_modes):  
+        return self._compute_zernike_tel(self.tel, n_modes)   
+    
+    @staticmethod
+    def modeName(index):
         modes_names = [
             'Tip', 'Tilt', 'Defocus', 'Astigmatism (X-shaped)', 'Astigmatism (+-shaped)',
             'Coma vertical', 'Coma horizontal', 'Trefoil vertical', 'Trefoil horizontal',
@@ -86,7 +81,7 @@ class Zernike:
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     def show(self):
-        attributes = inspect.getmembers(self, lambda a:not(inspect.isroutine(a)))
+        attributes = inspect.getmembers(self, lambda a: not(inspect.isroutine(a)))
         print(self.tag + ':')
         for a in attributes:
             if not(a[0].startswith('__') and a[0].endswith('__')):
