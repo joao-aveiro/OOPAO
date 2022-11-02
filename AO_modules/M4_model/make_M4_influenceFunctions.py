@@ -25,10 +25,14 @@ except:
         mkl_set_num_threads = mkl_rt.MKL_Set_Num_Threads
         mkl_set_num_threads(8)
     except:
-        import mkl
-        mkl_set_num_threads = mkl.set_num_threads#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% START OF THE FUNCTION   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        try:
+            import mkl
+            mkl_set_num_threads = mkl.set_num_threads
+        except:
+            mkl_set_num_threads = None
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% START OF THE FUNCTION   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-def makeM4influenceFunctions(pup, filename, misReg = 0, dm = None, nAct = 0, nJobs = 30, nThreads = 20, order =1):
+def makeM4influenceFunctions(pup, filename, misReg = 0, dm = None, nAct = 0, nJobs = 30, nThreads = 20, order =1,floating_precision=64, D = 40):
     try:
         mkl_set_num_threads(nThreads)
     except:
@@ -69,7 +73,7 @@ def makeM4influenceFunctions(pup, filename, misReg = 0, dm = None, nAct = 0, nJo
     resolution_M1                = pup.shape[1]
     
     # compute the pixel scale of the M1 pupil
-    pixelSize_M1                 = 40/resolution_M1
+    pixelSize_M1                 = D/resolution_M1
     
     # compute the ratio_M4_M1 between both pixel scale.
     ratio_M4_M1                  = pixelSize_M4_original/pixelSize_M1
@@ -107,15 +111,22 @@ def makeM4influenceFunctions(pup, filename, misReg = 0, dm = None, nAct = 0, nJo
     
     # definition of the function that is run in parallel for each 
     def reconstruction_IF(i,j,k):
-
-        # support of the IFS
-        influMap = np.zeros([941,941]) 
+  
         i=int(i)
-        j=int(j)
-        # fill up the support with the 2D IFS [120x120]
-        influMap[i:i+120, j:j+120] = k  
+        j=int(j)      
+        
+        if floating_precision==32:
+            # support of the IFS
+            influMap = np.zeros([resolution_M4_original,resolution_M4_original],dtype=np.float32) 
+            # fill up the support with the 2D IFS [120x120]
+            influMap[i:i+nx, j:j+ny] = np.float32(k)  
+        else:
+            influMap = np.zeros([resolution_M4_original,resolution_M4_original],dtype=np.float64) 
+            # fill up the support with the 2D IFS [120x120]
+            influMap[i:i+nx, j:j+ny] = k  
+
         output = globalTransformation(influMap)
-              
+
         del influMap
         return output
     

@@ -8,26 +8,25 @@ Created on Wed Oct 21 10:51:32 2020
 import matplotlib.pyplot as plt
 import numpy             as np 
 import time
-
+plt.ion()
 import __load__psim
 __load__psim.load_psim()
 
 from AO_modules.Atmosphere       import Atmosphere
-from AO_modules.ShackHartmann    import ShackHartmann
+from AO_modules.ShackHartmann          import ShackHartmann
 from AO_modules.DeformableMirror import DeformableMirror
-
 from AO_modules.MisRegistration  import MisRegistration
 from AO_modules.Telescope        import Telescope
 from AO_modules.Source           import Source
 # calibration modules 
 from AO_modules.calibration.compute_KL_modal_basis import compute_M2C
-from AO_modules.calibration.ao_calibration import ao_calibration
 # display modules
 from AO_modules.tools.displayTools           import displayMap
 
 #%% -----------------------     read parameter file   ----------------------------------
-from parameterFile_VLT_I_Band import initializeParameterFile
+from parameter_files.parameterFile_VLT_SPHERE_SH_WFS import initializeParameterFile
 param = initializeParameterFile()
+
 
 #%% -----------------------     TELESCOPE   ----------------------------------
 
@@ -37,24 +36,42 @@ tel = Telescope(resolution          = param['resolution'],\
                 samplingTime        = param['samplingTime'],\
                 centralObstruction  = param['centralObstruction'])
 
+
+thickness_spider = 0.05                         # size in m
+angle            = [45,135,225,315]             # in degrees
+offset_X         = [-0.4,0.4,0.4,-0.4]        # shift offset of the spider
+offset_Y         = None
+
+tel.apply_spiders(angle, thickness_spider, offset_X = offset_X, offset_Y= offset_Y)
+    
+
+
+plt.figure()
+plt.imshow(tel.pupilReflectivity)
+# %% -----------------------     NGS   ----------------------------------
 # create the Source object
-ngs=Source(optBand   = 'I5',\
+ngs=Source(optBand   = param['opticalBand'],\
            magnitude = param['magnitude'])
 
 # combine the NGS to the telescope using '*' operator:
 ngs*tel
 
 tel.computePSF(zeroPaddingFactor = 6)
-plt.figure()
+PSF_diff = tel.PSF/tel.PSF.max()
+N = 500
 
-PSF = tel.PSF/tel.PSF.max()
-plt.imshow(np.log10(np.abs(PSF)),extent = [tel.xPSF_arcsec[0],tel.xPSF_arcsec[1],tel.xPSF_arcsec[0],tel.xPSF_arcsec[1]])
-plt.clim([-6,0])
-plt.colorbar()
+fov_pix = tel.xPSF_arcsec[1]/tel.PSF.shape[0]
+fov = N*fov_pix
+plt.figure()
+plt.imshow(np.log10(PSF_diff[N:-N,N:-N]), extent=(-fov,fov,-fov,fov))
+plt.clim([-4.5,0])
+plt.xlabel('[Arcsec]')
+plt.ylabel('[Arcsec]')
 
 
 #%% -----------------------     ATMOSPHERE   ----------------------------------
 
+# create the Atmosphere object
 atm=Atmosphere(telescope     = tel,\
                r0            = param['r0'],\
                L0            = param['L0'],\
@@ -64,11 +81,24 @@ atm=Atmosphere(telescope     = tel,\
                altitude      = param['altitude'])
 # initialize atmosphere
 atm.initializeAtmosphere(tel)
-    
 
-plt.figure(10)
-plt.imshow(atm.OPD)
-plt.colorbar() 
+atm.update()
+
+plt.figure()
+plt.imshow(atm.OPD*1e9)
+plt.title('OPD Turbulence [nm]')
+plt.colorbar()
+
+
+tel+atm
+tel.computePSF(8)
+plt.figure()
+plt.imshow((np.log10(tel.PSF)),extent = [tel.xPSF_arcsec[0],tel.xPSF_arcsec[1],tel.xPSF_arcsec[0],tel.xPSF_arcsec[1]])
+plt.clim([-1,3])
+
+plt.xlabel('[Arcsec]')
+plt.ylabel('[Arcsec]')
+plt.colorbar()
 
 #%% -----------------------     DEFORMABLE MIRROR   ----------------------------------
 # mis-registrations object
@@ -83,152 +113,48 @@ plt.figure()
 plt.plot(dm.coordinates[:,0],dm.coordinates[:,1],'x')
 plt.xlabel('[m]')
 plt.ylabel('[m]')
+plt.title('DM Actuator Coordinates')
 
-#%%
+#%% -----------------------     SH WFS   ----------------------------------
 
-#% -----------------------     SH WFS   ----------------------------------
+# make sure tel and atm are separated to initialize the PWFS
+tel-atm
 
-wfs = ShackHartmann(nSubap       = param['nSubaperture'],\
-                    telescope    = tel,\
-                    lightRatio   = param['lightThreshold'] ,\
-                    is_geometric = False)    
-    
-    
-    
+wfs = ShackHartmann(nSubap      = param['nSubaperture'],\
+              telescope         = tel,\
+              lightRatio        = param['lightThreshold'],\
+              is_geometric      = param['is_geometric'])
+
+tel*wfs
+plt.close('all')
+
 plt.figure()
-plt.subplot(1,2,1)
+plt.imshow(wfs.valid_subapertures)
+plt.title('WFS Valid Subapertures')
+plt.figure()
 plt.imshow(wfs.cam.frame)
-plt.title('SH Camera Frame')
-
-plt.subplot(1,2,2)
-plt.imshow(wfs.valid_subapertures)
-plt.title(str(wfs.nValidSubaperture)+' valid subapertures')
-#%%
-# selection of the valid subaperture can be changed by setting a new value to wfs.lightRatio
-wfs.lightRatio = 0.1
-plt.figure()
-plt.imshow(wfs.valid_subapertures)
-plt.title(str(wfs.nValidSubaperture)+' valid subapertures')
-wfs.lightRatio = 0.1
-plt.figure()
-plt.imshow(wfs.valid_subapertures)
-plt.title(str(wfs.nValidSubaperture)+' valid subapertures')
-
+plt.title('WFS Camera Frame')
 
 #%% -----------------------     Modal Basis   ----------------------------------
 # compute the modal basis
 foldername_M2C  = None  # name of the folder to save the M2C matrix, if None a default name is used 
 filename_M2C    = None  # name of the filename, if None a default name is used 
+# KL Modal basis
+M2C = compute_M2C(telescope            = tel,\
+                                  atmosphere         = atm,\
+                                  deformableMirror   = dm,\
+                                  param              = param,\
+                                  mem_available      = 8.1e9,\
+                                  nmo                = 1000,\
+                                  nZer               = 3,\
+                                  remove_piston = True,\
+                                  recompute_cov      = False) # forces to recompute covariance matrix
 
 
-M2C_KL = compute_M2C(telescope            = tel,\
-                                 atmosphere         = atm,\
-                                 deformableMirror   = dm,\
-                                 param              = param,\
-                                 nameFolder         = None,\
-                                 nameFile           = None,\
-                                 remove_piston      = True,\
-                                 HHtName            = None,\
-                                 baseName           = None ,\
-                                 mem_available      = 8.1e9,\
-                                 minimF             = False,\
-                                 nmo                = 300,\
-                                 ortho_spm          = True,\
-                                 SZ                 = np.int(2*tel.OPD.shape[0]),\
-                                 nZer               = 3,\
-                                 NDIVL              = 1)
-
-    
-#%%
-    
-dm.coefs = M2C_KL[:,3]*100e-9
-
-# It is possible to switch from geometric to diffractive model setting:
-wfs.is_geometric = False
-
-tel*dm*wfs
-plt.figure()
-plt.subplot(1,2,1)
-plt.imshow(wfs.cam.frame)
-plt.title('SH Camera Frame')
-
-plt.subplot(1,2,2)
-plt.imshow(wfs.signal_2D)
-plt.title('SH 2D Signal')
-
-
-wfs.is_geometric = True
-
-tel*dm*wfs
-plt.figure()
-plt.subplot(1,2,1)
-plt.imshow(wfs.cam.frame)
-plt.title('SH Camera Frame')
-
-plt.subplot(1,2,2)
-plt.imshow(wfs.signal_2D)
-plt.title('SH 2D Signal')
-
-#%%
-
-# using geometric WFS for intmat computation
-wfs.is_geometric = True
-
-
-ao_calib =  ao_calibration(param            = param,\
-                           ngs              = ngs,\
-                           tel              = tel,\
-                           atm              = atm,\
-                           dm               = dm,\
-                           wfs              = wfs,\
-                           nameFolderIntMat = None,\
-                           nameIntMat       = None,\
-                           nameFolderBasis  = None,\
-                           nameBasis        = None,\
-                           nMeasurements    = 50)
-
-# back to diffractive model
-wfs.is_geometric = False
-    
-#%%
-
-plt.figure()
-plt.plot(np.std(ao_calib.basis,0))
 
 tel.resetOPD()
-tel.OPD = np.reshape(ao_calib.basis[:,10],[tel.resolution, tel.resolution])*10*1e-9
-
-
-#%% to manually measure the interaction matrix
-#
-## amplitude of the modes in m
-#stroke=1e-9
-## Modal Interaction Matrix 
-#M2C = M2C[:,:param['nModes']]
-#from AO_modules.calibration.InteractionMatrix import interactionMatrix
-#
-#calib = interactionMatrix(ngs            = ngs,\
-#                             atm            = atm,\
-#                             tel            = tel,\
-#                             dm             = dm,\
-#                             wfs            = wfs,\
-#                             M2C            = M2C,\
-#                             stroke         = stroke,\
-#                             phaseOffset    = 0,\
-#                             nMeasurements  = 100,\
-#                             noise          = False)
-#
-#plt.figure()
-#plt.plot(np.std(calib.D,axis=0))
-#plt.xlabel('Mode Number')
-#plt.ylabel('WFS slopes STD')
-#plt.ylabel('Optical Gain')
-
-
-#%%
-#
 # project the mode on the DM
-dm.coefs = ao_calib.M2C[:,:100]
+dm.coefs = M2C[:,:50]
 
 tel*dm
 #
@@ -250,35 +176,55 @@ plt.plot(np.round(np.std(np.squeeze(KL_dm[tel.pupilLogical,:]),axis = 0),5))
 plt.title('KL mode normalization projected on the DM')
 plt.show()
 
+#%%
+from AO_modules.calibration.InteractionMatrix import interactionMatrix
+# wfs.is_geometric = False
+
+stroke = 1e-9
+# controlling 1000 modes
+param['nModes'] = 1000
+M2C_KL = np.asarray(M2C[:,:param['nModes']])
+# Modal interaction matrix
+calib_KL = interactionMatrix(  ngs            = ngs,\
+                            atm            = atm,\
+                            tel            = tel,\
+                            dm             = dm,\
+                            wfs            = wfs,\
+                            M2C            = M2C_KL,\
+                            stroke         = stroke,\
+                            nMeasurements  = 200,\
+                            noise          = 'off')
+wfs.is_geometric = True
+
+calib_KL_geo = interactionMatrix(  ngs            = ngs,\
+                            atm            = atm,\
+                            tel            = tel,\
+                            dm             = dm,\
+                            wfs            = wfs,\
+                            M2C            = M2C_KL,\
+                            stroke         = stroke,\
+                            nMeasurements  = 200,\
+                            noise          = 'off')
+plt.figure()
+plt.plot(np.std(calib_KL.D,axis=0))
+plt.plot(np.std(calib_KL_geo.D,axis=0))
+
+plt.xlabel('Mode Number')
+plt.ylabel('WFS slopes STD')
+
 
 #%%
-N = 10
-a = np.abs(np.random.randn(N))
-a/=np.sum(a)
-
-param['fractionnalR0'        ] = list(a)                                            # Cn2 profile
-param['windSpeed'            ] = list(np.random.randint(10,50,N))                                           # wind speed of the different layers in [m.s-1]
-param['windDirection'        ] = list(np.random.randint(1,360,N))                                            # wind direction of the different layers in [degrees]
-param['altitude'             ] = list(np.random.randint(1,20,N))  
-# create the Atmosphere object
-atm=Atmosphere(telescope     = tel,\
-               r0            = param['r0'],\
-               L0            = param['L0'],\
-               windSpeed     = param['windSpeed'],\
-               fractionalR0  = param['fractionnalR0'],\
-               windDirection = param['windDirection'],\
-               altitude      = param['altitude'])    # initialize atmosphere
-atm.initializeAtmosphere(tel)
-
-
-#%%
-
 # These are the calibration data used to close the loop
-calib_CL    = ao_calib.calib
-M2C_CL      = ao_calib.M2C
+wfs.is_geometric = False
+
+calib_CL    = calib_KL_geo
+M2C_CL      = M2C_KL.copy()
+
+
 
 plt.close('all')
-
+tel.resetOPD()
+tel*dm
 # combine telescope with atmosphere
 tel+atm
 
@@ -301,7 +247,7 @@ plt.title('DM phase [rad]')
 tel.computePSF(zeroPaddingFactor=6)
 
 ax4         = plt.subplot(2,3,3)
-im_PSF_OL   = ax4.imshow(tel.PSF_trunc)
+im_PSF_OL   = ax4.imshow(tel.PSF)
 plt.colorbar(im_PSF_OL)
 plt.title('OL PSF')
 
@@ -317,12 +263,13 @@ plt.colorbar(im_wfs_CL)
 plt.title('SH Frame CL')
 
 ax6         = plt.subplot(2,3,6)
-im_PSF      = ax6.imshow(tel.PSF_trunc)
+im_PSF      = ax6.imshow(tel.PSF)
 plt.colorbar(im_PSF)
 plt.title('CL PSF')
 
 plt.show()
 
+param['nLoop'] = 1000
 # allocate memory to save data
 SR                      = np.zeros(param['nLoop'])
 total                   = np.zeros(param['nLoop'])
@@ -332,12 +279,10 @@ wfsSignal               = np.arange(0,wfs.nSignal)*0
 # loop parameters
 gainCL                  = 0.4
 wfs.cam.photonNoise     = True
-display                 = False
+display                 = True
 
-param['nLoop']          = 500
-
-
-atm.initializeAtmosphere(tel)
+reconstructor = M2C_CL@calib_CL.M
+PSF_LE = []
 for i in range(param['nLoop']):
     a=time.time()
     # update phase screens => overwrite tel.OPD and consequently tel.src.phase
@@ -348,8 +293,8 @@ for i in range(param['nLoop']):
     turbPhase = tel.src.phase
     if display == True:
            # compute the OL PSF and update the display
-       tel.computePSF(zeroPaddingFactor=6)
-       im_PSF_OL.set_data(np.log(tel.PSF_trunc/tel.PSF_trunc.max()))
+       tel.computePSF(zeroPaddingFactor=2)
+       im_PSF_OL.set_data(np.log(tel.PSF/tel.PSF.max()))
        im_PSF_OL.set_clim(vmin=-3,vmax=0)
        
      # propagate to the WFS with the CL commands applied
@@ -358,11 +303,15 @@ for i in range(param['nLoop']):
      # save the DM OPD shape
     dmOPD=tel.pupil*dm.OPD*2*np.pi/ngs.wavelength
     
-    dm.coefs=dm.coefs-gainCL*M2C_CL@calib_CL.M@wfsSignal
+    dm.coefs=dm.coefs-gainCL*np.matmul(reconstructor,wfsSignal)
      # store the slopes after computing the commands => 2 frames delay
     wfsSignal=wfs.signal
     b= time.time()
     print('Elapsed time: ' + str(b-a) +' s')
+    tel.computePSF(zeroPaddingFactor=2)
+    if i>10:
+        PSF_LE.append(tel.PSF)
+
     # update displays if required
     if display==True:
         
@@ -383,8 +332,7 @@ for i in range(param['nLoop']):
        im_residual.set_data(D)
        im_residual.set_clim(vmin=D.min(),vmax=D.max()) 
     
-       tel.computePSF(zeroPaddingFactor=6)
-       im_PSF.set_data(np.log(tel.PSF_trunc/tel.PSF_trunc.max()))
+       im_PSF.set_data(np.log(tel.PSF/tel.PSF.max()))
        im_PSF.set_clim(vmin=-4,vmax=0)
        plt.draw()
        plt.show()
@@ -401,7 +349,31 @@ for i in range(param['nLoop']):
 plt.figure()
 plt.plot(total)
 plt.plot(residual)
-
-plt.xlabel('Time')
+plt.xlabel('Time [ms]')
 plt.ylabel('WFE [nm]')
 
+plt.figure()
+PSF = np.mean(PSF_LE,axis=0)
+PSF/=PSF.max()
+N = 200
+fov_pix = tel.xPSF_arcsec[1]/PSF.shape[0]
+fov = N*fov_pix
+plt.imshow(np.log10(PSF[N:-N,N:-N]), extent=(-fov,fov,-fov,fov))
+plt.clim([-4.5,0])
+plt.xlabel('[Arcsec]')
+plt.ylabel('[Arcsec]')
+
+
+tel.resetOPD()
+tel.computePSF(6)
+PSF_diff = tel.PSF/tel.PSF.max()
+plt.figure()
+plt.imshow(np.log10(PSF_diff[N:-N,N:-N]), extent=(-fov,fov,-fov,fov))
+plt.clim([-4.5,0])
+plt.xlabel('[Arcsec]')
+plt.ylabel('[Arcsec]')
+
+plt.figure()
+plt.plot(residual)
+plt.xlabel('Time')
+plt.ylabel('WFE [nm]')

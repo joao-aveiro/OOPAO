@@ -16,7 +16,7 @@ def initializeParameterFile():
     
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ATMOSPHERE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
-    param['r0'                   ] = 0.15                                           # value of r0 in the visibile in [m]
+    param['r0'                   ] = 0.13                                           # value of r0 in the visibile in [m]
     param['L0'                   ] = 30                                             # value of L0 in the visibile in [m]
     param['fractionnalR0'        ] = [0.2,0.2,0.2,0.2,0.2]                                            # Cn2 profile
     param['windSpeed'            ] = [10,10,10,10,10]                                           # wind speed of the different layers in [m.s-1]
@@ -28,7 +28,7 @@ def initializeParameterFile():
     
     param['diameter'             ] = 8                                             # diameter in [m]
     param['nSubaperture'         ] = 20                                             # number of PWFS subaperture along the telescope diameter
-    param['nPixelPerSubap'       ] = 8                                            # sampling of the PWFS subapertures
+    param['nPixelPerSubap'       ] = 6                                            # sampling of the PWFS subapertures
     param['resolution'           ] = param['nSubaperture']*param['nPixelPerSubap']  # resolution of the telescope driven by the PWFS
     param['sizeSubaperture'      ] = param['diameter']/param['nSubaperture']        # size of a sub-aperture projected in the M1 space
     param['samplingTime'         ] = 1/1000                                         # loop sampling time in [s]
@@ -45,7 +45,7 @@ def initializeParameterFile():
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     param['nActuator'            ] = param['nSubaperture']+1                                             # number of actuators 
     param['mechanicalCoupling'   ] = 0.45
-    param['isM4'                 ] = False                                           # tag for the deformable mirror class
+    param['isM4'                 ] = True                                           # tag for the deformable mirror class
     param['dm_coordinates'       ] = None                                           # tag for the eformable mirror class
     
     # mis-registrations                                                             
@@ -62,16 +62,9 @@ def initializeParameterFile():
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% WFS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     param['modulation'            ] = 3                                             # modulation radius in ratio of wavelength over telescope diameter
-    param['pupilSeparationRatio'  ] = 1.2                                             # separation ratio between the PWFS pupils
-    param['psfCentering'          ] = False                                         # centering of the FFT and of the PWFS mask on the 4 central pixels
-    param['calibrationModulation' ] = 50                                            # modulation radius used to select the valid pixels
-    param['lightThreshold'        ] = 0.1                                           # light threshold to select the valid pixels
-    param['edgePixel'             ] = 1                                             # number of pixel on the external edge of the PWFS pupils
-    param['extraModulationFactor' ] = 0                                             # factor to add/remove 4 modulation points (one for each PWFS face)
-#    param['postProcessing'        ] = 'fullFrame'                                   # post-processing of the PWFS signals WARNING
-    param['postProcessing'        ] = 'slopesMaps'                                   # post-processing of the PWFS signals 
+    param['lightThreshold'        ] = 0.5                                           # light threshold to select the valid pixels
     param['unitCalibration'       ] = False                                         # calibration of the PWFS units using a ramp of Tip/Tilt    
-    
+    param['is_geometric'          ] = False
     
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOOP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -89,10 +82,10 @@ def initializeParameterFile():
     param['name'] = 'VLT_' +  param['opticalBand'] +'_band_'+ str(param['nSubaperture'])+'x'+ str(param['nSubaperture'])  
     
     # location of the calibration data
-    param['pathInput'            ] = '/Disk3/cheritier/psim/data_calibration/' 
+    param['pathInput'            ] = 'data_calibration/' 
     
     # location of the output data
-    param['pathOutput'            ] = '/diskb/cheritier/psim/data_cl'
+    param['pathOutput'            ] = 'data_cl/'
     
 
     print('Reading/Writting calibration data from ' + param['pathInput'])

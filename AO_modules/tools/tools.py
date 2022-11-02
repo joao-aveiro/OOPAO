@@ -11,16 +11,25 @@ import skimage.transform as sk
 from astropy.io import fits as pfits
 import json
 import jsonpickle
+import subprocess 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% USEFUL FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+def print_(input_text,condition):
+    if condition:
+        print(input_text)
+        
+
 def createFolder(path):
     
+    if path.rfind('.') != -1:
+        path = path[:path.rfind('/')+1]
+        
     try:
         os.makedirs(path)
     except OSError:
-        print ("Creation of the directory %s failed:" % path)
         if path:
-            print('Directory already exists!')
+            path =path
         else:
+            print ("Creation of the directory %s failed:" % path)
             print('Maybe you do not have access to this location.')
     else:
         print ("Successfully created the directory %s !" % path)
@@ -40,6 +49,11 @@ def cart2pol(x, y):
     rho = np.sqrt(x**2 + y**2)
     phi = np.arctan2(y, x)
     return(rho, phi)
+
+def pol2cart(rho, phi):
+    x = rho * np.cos(phi)
+    y = rho * np.sin(phi)
+    return(x, y)
     
 def translationImageMatrix(image,shift):
     # translate the image with the corresponding shift value
@@ -91,7 +105,10 @@ def read_fits(filename , dim = 0):
         data = hdu[dim].data
     hdu.close()
     del hdu[0].data
+    
+    
     return data
+
     
 def write_fits(data, filename , header_name = '',overwrite=True):
     
@@ -123,7 +140,8 @@ def findNextPowerOf2(n):
     # return next power of 2
     return n << 1
       
-def centroid(im, threshold = 0):
+def centroid(image, threshold = 0):
+    im = np.copy(image)
     im[im<threshold]=0
     x = 0
     y = 0
@@ -171,3 +189,11 @@ def bin_ndarray(ndarray, new_shape, operation='sum'):
         op = getattr(ndarray, operation)
         ndarray = op(-1*(i+1))
     return ndarray
+
+
+
+def get_gpu_memory():
+    command = "nvidia-smi --query-gpu=memory.free --format=csv"
+    memory_free_info = subprocess.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    return memory_free_values
